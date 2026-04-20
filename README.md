@@ -1,81 +1,374 @@
-# AzerothCore with Playerbots Docker setup (installscript)
+# AzerothCore with Playerbots Docker Setup
 
-Script installing AzerothCore with Playerbots on Docker
+This repository is an updated continuation of the original [`coc0nut/AzerothCore-with-Playerbots-Docker-Setup`](https://github.com/coc0nut/AzerothCore-with-Playerbots-Docker-Setup). That project provided a helpful starting point, but it has not been actively maintained for a few years. This repo keeps the same goal, updates the install flow, and adds more automation so it is easier to deploy and maintain a Playerbots-based AzerothCore server today.
 
-This is not a fork! Its just scripts to manage the game.
+The goal of this project is simple: provide a turn-key way to stand up AzerothCore with Playerbots and a set of optional but useful modules, with as little manual Docker and config work as possible.
 
-Includes:
-- [MariaDB-Client]() (This is only client and will install only if you dont have the mysql command...)
-- [Docker](https://docker.com) (Will install if Docker is not installed.)
-- [Azeroth Core - Playerbots branch](https://github.com/liyunfan1223/azerothcore-wotlk.git)
+## What This Repository Does
+
+This repository does not contain AzerothCore itself. Instead, it provides the scripts, Docker overrides, SQL helpers, and config workflow needed to:
+
+- Install Docker if it is missing
+- Clone the Playerbot AzerothCore branch
+- Clone `mod-playerbots`
+- Optionally clone additional modules from a shared module list
+- Build and start the Docker services
+- Create local host-side config folders under `wotlk/`
+- Copy missing `*.conf.dist` templates to real `*.conf` files automatically
+- Apply a few module-specific config requirements automatically
+- Import this repo's custom SQL files
+- Give you a repeatable way to reload modules later without reinstalling everything
+
+## Recommended Environment
+
+This project is intended to run on a Linux machine dedicated to AzerothCore.
+
+Supported families:
+
+- Debian-based systems
+- Ubuntu-based systems
+- Arch-based systems
+
+Recommended setup:
+
+- Use a clean VM or fresh Linux install
+- Use the VM only for AzerothCore and related management
+- Run the install and reload scripts with `sudo`
+- Let the scripts restore AzerothCore file ownership back to the user who invoked them
+
+Why a clean VM is recommended:
+
+- Docker, database files, and world data can consume a lot of disk space
+- It keeps your AzerothCore environment isolated from other software
+- Troubleshooting is much easier when the machine only has one purpose
+- File ownership and Docker permission issues are much less common on a clean system
+
+## Included Modules
+
+The install flow always pulls:
+
+- [AzerothCore Playerbot branch](https://github.com/liyunfan1223/azerothcore-wotlk.git)
 - [mod-playerbots](https://github.com/liyunfan1223/mod-playerbots)
-- [mod-aoe-loot](https://github.com/azerothcore/mod-aoe-loot) (optional)
-- [mod-learn-spells](https://github.com/noisiver/mod-learn-spells) (optional)
-- [mod-fireworks-on-level](https://github.com/azerothcore/mod-fireworks-on-level.git) (optional)
-- [mod-individual-progression](https://github.com/ZhengPeiRu21/mod-individual-progression.git) (optional)
 
-Prerequisits: 
-  1. Debian 12 Bookworm
+Optional modules are managed through `src/module-repos.txt`:
 
+- `mod-aoe-loot`
+- `mod-learn-spells`
+- `mod-fireworks-on-level`
+- `mod-individual-progression`
+- `mod-npc-enchanter`
+- `mod-assistant`
+- `mod-quest-loot-party`
 
-Reference:
-[Azeroth Core](https://www.azerothcore.org/wiki/home)
+You can add more modules later by editing `src/module-repos.txt` and running `sudo ./reload_modules.sh`.
 
----
+## Folder Layout
 
-### Steps:
+After installation, the important folders are:
 
-1.
-> Be sure to set correct timezone on your debian before you start.
- ```bash
- git clone https://github.com/coc0nut/AzerothCore-with-Playerbots-Docker-Setup.git \
- && cd AzerothCore-with-Playerbots-Docker-Setup && chmod +x *.sh && ./setup.sh
- ```
+- `azerothcore-wotlk/`
+  This is the cloned AzerothCore Docker project and module source tree.
+- `wotlk/etc/`
+  This is your host-side live config directory. Edit configs here, not inside the containers.
+- `wotlk/etc/modules/`
+  This is where module config files live on the host.
+- `wotlk/logs/`
+  This stores host-side logs from the Docker setup.
+- `src/sql/`
+  This repository's custom SQL files that are imported by `setup.sh`.
 
-2. 
+Important note:
+
+- `*.conf.dist` files are templates
+- `*.conf` files are the real active configs
+- The scripts will create missing `.conf` files from `.conf.dist`, but they will not overwrite existing real configs
+
+## First-Time Installation
+
+Clone the repository and run the installer:
+
+```bash
+git clone https://github.com/abcgxp/AzerothCore-with-Playerbots-Docker-Setup.git
+cd AzerothCore-with-Playerbots-Docker-Setup
+chmod +x *.sh
+sudo ./setup.sh
 ```
-NOTE:
 
-1. Execute 'docker attach ac-worldserver'
-2. 'account create username password' creates an account.
-3. 'account set gmlevel username 3 -1' sets the account as gm for all servers.
-4. Ctrl+p Ctrl+q will take you out of the world console.
-5. Now login to wow on $(hostname -I | awk '{print $1}') with 3.3.5a client!
-6. All the configs for the server and modules is copied to a folder named wotlk. This is where you edit playerbots and server configuration.
+The installer will:
+
+1. Detect your Linux distribution
+2. Detect your timezone
+3. Install the MySQL client if needed
+4. Install Docker if needed
+5. Make sure Docker is actually usable
+6. Create `wotlk/etc` and `wotlk/logs`
+7. Clone AzerothCore Playerbots if it is not already present
+8. Ask whether you want to install optional modules
+9. Build and start the Docker services
+10. Wait for MySQL inside the database container
+11. Copy missing config templates into real config files
+12. Apply required config changes for some modules
+13. Run this repo's custom SQL
+14. Print the server IP and offer to attach you to the worldserver console
+
+## How the Scripts Work
+
+### `setup.sh`
+
+Use this for the first install, or when you want to refresh the main project without deleting everything.
+
+What it does:
+
+- Handles Docker and MySQL client installation
+- Clones AzerothCore Playerbots if missing
+- Clones `mod-playerbots`
+- Optionally clones extra modules from `src/module-repos.txt`
+- Builds and starts the Docker stack
+- Copies missing config templates into active config files
+- Imports custom SQL
+- Updates the realm IP in the auth database
+
+Use it when:
+
+- You are installing for the first time
+- You deleted `azerothcore-wotlk/`
+- You want to rebuild from the current repo state
+
+### `reload_modules.sh`
+
+Use this when the server is already installed and you want to pull in newly added modules from the shared module list without rerunning the full first-time install flow.
+
+What it does:
+
+- Refreshes runtime Docker files
+- Reads `src/module-repos.txt`
+- Clones any listed modules that are not already present
+- Rebuilds the Docker services
+- Copies missing `*.conf.dist` files into real `*.conf` files
+- Applies module-specific config requirements
+- Restarts the world/auth services if config changes were made
+
+Use it when:
+
+- You added new module entries to `src/module-repos.txt`
+- You pulled a newer version of this repository and want any new optional modules
+- You want to rebuild after changing the shared module catalog
+
+### `start_stop_acore.sh`
+
+This is a simple toggle script for the three main containers:
+
+- `ac-worldserver`
+- `ac-authserver`
+- `ac-database`
+
+If they are running, it stops them. If they are stopped, it starts them.
+
+### `sqldump.sh`
+
+Use this to create database backups or recover them later.
+
+What it supports:
+
+- Backup of `acore_auth`
+- Backup of `acore_characters`
+- Backup of `acore_world`
+- Backup of `acore_playerbots`
+- Recovery from a dated SQL dump
+
+It stores backups under:
+
+- `sql_dumps/acore_auth/`
+- `sql_dumps/acore_characters/`
+- `sql_dumps/acore_world/`
+- `sql_dumps/acore_playerbots/`
+
+### `clear_custom_sql.sh`
+
+Use this if you want to remove the custom SQL files copied into the AzerothCore Docker project.
+
+This is helpful when:
+
+- You removed a module
+- You want to stop reapplying old custom SQL
+- You want a cleaner rebuild before rerunning setup
+
+### `uninstall.sh`
+
+Use this to tear the project down.
+
+What it does:
+
+- Stops the Docker Compose project
+- Prunes Docker images
+- Optionally removes the Docker volumes
+- Deletes `azerothcore-wotlk/`
+- Clears `wotlk/*`
+
+If you keep the volumes, a later reinstall behaves more like an update than a fresh start.
+
+## Config Workflow
+
+This repository is designed so you can edit configs on the host instead of inside containers.
+
+Main server configs:
+
+- `wotlk/etc/worldserver.conf`
+- `wotlk/etc/authserver.conf`
+- `wotlk/etc/dbimport.conf`
+
+Module configs:
+
+- `wotlk/etc/modules/*.conf`
+
+How config files appear:
+
+1. The Docker project or modules provide `*.conf.dist` template files
+2. The scripts check `wotlk/etc` and `wotlk/etc/modules`
+3. If a real `.conf` file does not exist yet, the script copies the `.conf.dist` file to `.conf`
+4. If a real `.conf` file already exists, it is left alone
+
+That means you can safely edit your host-side `.conf` files and rerun the scripts without losing those changes.
+
+## Module-Specific Behavior
+
+### `mod-individual-progression`
+
+This module requires two `worldserver.conf` settings to function correctly:
+
+- `EnablePlayerSettings = 1`
+- `DBC.EnforceItemAttributes = 0`
+
+If `mod-individual-progression` is present, `setup.sh` and `reload_modules.sh` will ensure those values are set in:
+
+- `wotlk/etc/worldserver.conf`
+
+## Updating Later
+
+There are two common update paths.
+
+### Pull in newly added modules
+
+If this repository's module list changes later, run:
+
+```bash
+sudo ./reload_modules.sh
 ```
-See [Azeroth Core - Docker setup](https://www.azerothcore.org/wiki/install-with-docker) for more info.
 
-3.
-```shell
-AC> account create username password
-AC> account set gmlevel username 3 -1
+This is the preferred way to pick up new optional modules added after your original install.
+
+### Rebuild the whole stack without deleting volumes
+
+If you want to update the environment more broadly:
+
+1. Run `./uninstall.sh`
+2. When asked whether to delete volumes, choose `n`
+3. Run `sudo ./setup.sh` again
+
+That keeps your data volumes and behaves more like an update/rebuild.
+
+## Post-Installation Steps
+
+When installation finishes, you still need to do a few normal AzerothCore tasks.
+
+### 1. Attach to the worldserver console
+
+If you did not let `setup.sh` attach automatically, run:
+
+```bash
+docker attach ac-worldserver
 ```
 
-4.
-Edit your wow_client_3.3.5a\Data\enUS\realmlist.wtf and type in the ip address you get in the end of installing...
-`set realmlist dockerhost_ip`
+### 2. Create an account
 
-**Change dockerhost_ip to the ip that the machine that runs the docker containers has.**
+Inside the worldserver console:
 
-To uninstall and start fresh, run `./uninstall.sh`
+```text
+account create username password
+account set gmlevel username 3 -1
+```
 
-To clear the `data/sql/custom` folders run `./clear_custom_sql.sh`
+Detach from the console without stopping the server:
 
-## Usage
+```text
+Ctrl+p, then Ctrl+q
+```
 
-### Update
+### 3. Update your WoW client realmlist
 
-- To update and get the latest versions, you can run `./uninstall.sh` without deleting the volumes and run `./setup.sh` again.
-It will prompt you if you want to delete the volumes. (Dont let the warnings scare you :)
+Edit your `realmlist.wtf` and set it to the server IP printed by `setup.sh`:
 
-- You can add modules to the `setup.sh` file by scrolling to the "install_mod" section and add the entries you'd like. **Or** you could do it manually by putting the modules folders into the `azerothcore-wotlk/modules`folder. `setup.sh` will automatically add the sql. See [How do I install modules?](https://www.azerothcore.org/wiki/install-with-docker#how-do-i-install-modules) for more info.
+```text
+set realmlist your_server_ip
+```
 
-- Running `setup.sh` will not install anything over again unless you delete a modules folder or the `azerothcore-wotlk` folder before. You can run it if you only want to install new modules youve added, it will skip if you already downloaded the repos.
+### 4. Confirm server ports
 
-- If you delete modules, remember to run `clear_custom_sql.sh` first and remove the respective tables in the db.
+By default, the Docker stack publishes the standard ports used by auth/world services. If clients cannot connect, check:
 
-### Backup & Recovery
+```bash
+cd azerothcore-wotlk
+docker compose ps
+```
 
-- You can backup and recover the databases by running `./sqldump.sh`. It will place the backups in `sql_dumps` folder... On recovery, you will be prompted to enter a date (given you back up once a day at maximum.)
+## Basic Day-2 Operations
 
----                                                                                                             
+Start or stop the server:
+
+```bash
+./start_stop_acore.sh
+```
+
+Reload newly added modules:
+
+```bash
+./reload_modules.sh
+```
+
+Backup the databases:
+
+```bash
+./sqldump.sh
+```
+
+Remove custom SQL files from the Docker project:
+
+```bash
+./clear_custom_sql.sh
+```
+
+Uninstall:
+
+```bash
+./uninstall.sh
+```
+
+## Troubleshooting Notes
+
+### Docker permission issues
+
+Run `setup.sh` and `reload_modules.sh` with `sudo`. If Docker says your user cannot access the daemon outside those scripts, log out and back in after being added to the `docker` group.
+
+### MySQL wait timeout
+
+The scripts now check MySQL from inside the `ac-database` container instead of relying on the host LAN IP. If MySQL still times out, inspect:
+
+```bash
+cd azerothcore-wotlk
+docker compose ps
+docker compose logs --tail=100 ac-database
+```
+
+### Missing module config warnings
+
+If you see warnings like `Missing property ...`, it usually means the module is installed but its active `.conf` file did not exist yet or a required setting was not present. The config template sync in `setup.sh` and `reload_modules.sh` is meant to reduce that problem significantly.
+
+### Line ending issues after copying from Windows
+
+If Linux shows errors involving `$'\r'`, the files were copied with Windows line endings. Re-clone on Linux or normalize line endings before running the scripts.
+
+## Reference
+
+- [AzerothCore Home](https://www.azerothcore.org/wiki/home)
+- [AzerothCore Docker Guide](https://www.azerothcore.org/wiki/install-with-docker)
+- [AzerothCore Module Installation Guide](https://www.azerothcore.org/wiki/installing-a-module)
