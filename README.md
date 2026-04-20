@@ -284,8 +284,8 @@ docker attach ac-worldserver
 Inside the worldserver console:
 
 ```text
-account create username password
-account set gmlevel username 3 -1
+.account create your-username your-password
+.account set gmlevel your-username 3 -1
 ```
 
 Detach from the console without stopping the server:
